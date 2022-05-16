@@ -68,12 +68,45 @@ deleteInstance(){
 	else
 		_ID=${1}
 	fi
+	_INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
+	_LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
+	_IP=$(echo ${_INSTANCE} | cut -d, -f2)
+	deleteRoute53
 	curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
 	printf "Instance ${_ID} deleted.\n"
 }
 
+checkDNS(){
+	which aws &> /dev/null
+	if [ $? -ne 0 ]; then
+  		echo "Package awscli is not installed. DNS records will not be updated."
+		_UPDATE_DNS=0
+	elif [ ! -e ~/.aws/config ]; then
+		echo "AWS config file is missing. DNS records will not be updated."
+		_UPDATE_DNS=0
+	elif [ -z ${_ZONEID} ]; then
+		echo "Zone ID is missing in .variables file. DNS records will not be updates."
+		_UPDATE_DNS=0
+    elif [ -z ${_ZONE} ]; then
+        echo "Zone is missing in .variables file. DNS records will not be updates."
+        _UPDATE_DNS=0
+	else
+		_UPDATE_DNS=1
+fi
+}
+
+createRoute53(){
+	printf '{"Comment":"Create Linode DNS record","Changes":[{"Action":"UPSERT","ResourceRecordSet":{"ResourceRecords":[{"Value":"'${_IP}'"}],"Name":"'${_LABELX}.${_ZONE}'","Type":"A","TTL":30}}]}' > ${_SCRIPTDIR}/tmp/route_53.json
+	aws route53 change-resource-record-sets --hosted-zone-id ${_ZONEID} --change-batch file://${_SCRIPTDIR}/tmp/route_53.json > /dev/null
+	if [ $? -eq 0 ]; then
+		printf "Route53 record ${_LABELX}.${_ZONE} created.\n"
+	else
+		printf "Error creating Route53 record ${_LABELX}.${_ZONE}.\n"
+	fi
+}
+
 createInstance(){
-	_PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo)
+	_PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
 	printf "Regions: \n"
 	getRegions
 	read -r -p "Which region? " _REGION
@@ -85,6 +118,14 @@ createInstance(){
 	read -r -p "Which image? " _IMAGE
 	read -r -p "Instance Name? " _LABEL
 	read -r -p "How many instances? " _REPLICAS
+	while true; do
+		read -p "Do you wish to create Route 53 DNS records? " yn
+		case $yn in
+			[Yy]* ) checkDNS; break;;
+			[Nn]* ) _UPDATE_DNS=0; break;;
+			* ) echo "Please answer yes or no.";;
+		esac
+	done
 	_REPLICA=0
 	printf "\nThe root password is: ${_PASSWORD}\n"
 	until [ ${_REPLICA} -eq ${_REPLICAS} ]; do
@@ -111,13 +152,18 @@ createInstance(){
 			_IP=$(cat ${_SCRIPTDIR}/tmp/instance.json | jq -r '.ipv4[0]')
 			printf "Linode ${_LABELX} created\n"
 
+			# DNS Records
+			if [ ${_UPDATE_DNS} -eq 1 ]; then
+				createRoute53
+			fi
+
 			# Connect to Instance
 			if [ ${_REPLICAS} -eq 1 ]; then
 				while true; do
 					read -p "Do you wish to connect to this instance? " yn
 					case $yn in
 						[Yy]* ) connectInstance 2> /dev/null; break;; #Connect and redirect stderr to /dev/null
-						[Nn]* ) exit;;
+						[Nn]* ) break;;
 						* ) echo "Please answer yes or no.";;
 					esac
 				done
@@ -137,22 +183,34 @@ until ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o Connect
         echo "Please wait..."
         sleep 1
 done
-printf "Exiting...\n"
-exit
 }
 
 connectInstanceManual(){
 	listInstances
 	read -r -p "Instance ID: " _ID
 	_IP=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r .ipv4[0])
-	until ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=2 -i ${_SCRIPTDIR}/keys/${_KEYNAME} root@${_IP}; do
-        echo "Please wait..."
-        sleep 1
-	done
+	connectInstance 2> /dev/null
+}
+
+deleteRoute53(){
+	dig ${_LABELX}.${_ZONE} | grep "ANSWER: 1"> /dev/null
+	if [ $? -eq 0 ]; then
+		printf '{"Comment":"Delete Linode DNS record","Changes":[{"Action":"DELETE","ResourceRecordSet":{"ResourceRecords":[{"Value":"'${_IP}'"}],"Name":"'${_LABELX}.${_ZONE}'","Type":"A","TTL":30}}]}' > ${_SCRIPTDIR}/tmp/route_53.json
+		aws route53 change-resource-record-sets --hosted-zone-id ${_ZONEID} --change-batch file://${_SCRIPTDIR}/tmp/route_53.json > /dev/null
+		if [ $? -eq 0 ]; then
+			printf "Route53 record ${_LABELX}.${_ZONE} deleted.\n"
+		else
+			printf "Error deleting Route53 record ${_LABELX}.${_ZONE}.\n"
+		fi
+	fi
 }
 
 terminateAllInstances(){
-	for _ID in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | .id'); do
+	for _INSTANCE in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0]'); do
+		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
+		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
+		deleteRoute53
 		deleteInstance ${_ID}
 	done
 }

@@ -8,6 +8,7 @@
 	 - Public key loaded into Linode
 	 - Private key stored in **keys** directory
  - Properly formatted .variables file
+ - Auto creation of DNS records supported using AWS Route 53
 
 ## .variables
 
@@ -17,6 +18,8 @@ The .variables file must be created in root of the script directory in the follo
     _KEYNAME=<SSH private key file>
     _TOKEN=<Linode Personal Access Token>
     _STACKSCRIPTID=<Linode StackScript ID>
+    _ZONE=<AWS Route 53 Zone Name>
+    _ZONEID=<AWS Route 53 Zone ID>
 
 ## StackScript
 
