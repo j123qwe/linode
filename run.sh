@@ -118,19 +118,23 @@ createInstance(){
 	read -r -p "Which image? " _IMAGE
 	read -r -p "Instance Name? " _LABEL
 	read -r -p "How many instances? " _REPLICAS
-	while true; do
-		read -p "Do you wish to create Route 53 DNS records? " yn
-		case $yn in
-			[Yy]* ) checkDNS; break;;
-			[Nn]* ) _UPDATE_DNS=0; break;;
-			* ) echo "Please answer yes or no.";;
-		esac
-	done
+	if [ ! -z ${_ZONE} ] && [ ! -z ${_ZONEID} ]; then
+		while true; do
+			read -p "Do you wish to create Route 53 DNS records? " yn
+			case $yn in
+				[Yy]* ) checkDNS; break;;
+				[Nn]* ) _UPDATE_DNS=0; break;;
+				* ) echo "Please answer yes or no.";;
+			esac
+		done
+	else
+		_UPDATE_DNS=0
+	fi
 	_REPLICA=0
 	printf "\nThe root password is: ${_PASSWORD}\n"
 	until [ ${_REPLICA} -eq ${_REPLICAS} ]; do
 		_REPLICA=$(expr ${_REPLICA} + 1)
-		_LABELX=$(echo "${_LABEL}_${_REPLICA}")
+		_LABELX=$(echo "${_LABEL}-${_REPLICA}")
 		curl --silent -H "Content-Type: application/json" \
 			-H "Authorization: Bearer ${_TOKEN}" \
 			-X POST -d '{
