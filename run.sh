@@ -214,7 +214,6 @@ terminateAllInstances(){
 		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
 		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
 		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
-		deleteRoute53
 		deleteInstance ${_ID}
 	done
 }
