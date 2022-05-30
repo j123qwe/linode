@@ -51,8 +51,8 @@ getTypes(){
 }
 
 listInstances(){
-	printf "ID,Label,IPv4,IPv6\n"
-	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0] + "," + .ipv6'
+	printf "ID,Label,IPv4,IPv6,Status\n"
+	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0] + "," + .ipv6 + "," + .status'
 }
 
 viewInstance(){
@@ -61,19 +61,27 @@ viewInstance(){
 	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq 
 }
 
-deleteInstance(){
-	if [ -z ${1} ]; then
-		listInstances
-		read -r -p "Instance ID: " _ID
-	else
+terminateInstance(){
+	if [ ! -z ${1} ]; then
 		_ID=${1}
+        _INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
+        _LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
+        _IP=$(echo ${_INSTANCE} | cut -d, -f2)
+        deleteRoute53
+        curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
+        printf "Instance ${_ID} deleted.\n"
+	else
+		listInstances
+		read -r -p "Which image label? " _LABEL
+        for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+            _ID=$(echo ${_INSTANCE} | cut -d, -f1)
+            _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+            _IP=$(echo ${_INSTANCE} | cut -d, -f3)
+            deleteRoute53
+            curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
+            printf "Instance ${_LABELX} deleted.\n"
+        done
 	fi
-	_INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
-	_LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
-	_IP=$(echo ${_INSTANCE} | cut -d, -f2)
-	deleteRoute53
-	curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
-	printf "Instance ${_ID} deleted.\n"
 }
 
 checkDNS(){
@@ -214,9 +222,32 @@ terminateAllInstances(){
 		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
 		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
 		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
-		deleteInstance ${_ID}
+		terminateInstance ${_ID}
 	done
 }
+
+stopInstance(){
+	listInstances
+	read -r -p "Which image label? " _LABEL
+	for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
+		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+		curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/shutdown > /dev/null
+		printf "Instance ${_LABELX} shut down.\n"
+	done
+}
+
+startInstance(){
+	listInstances
+	read -r -p "Which image label? " _LABEL
+	for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
+		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+		curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/boot > /dev/null
+		printf "Instance ${_LABELX} booted.\n"
+	done
+}
+
 
 ##Execute
 
@@ -225,15 +256,15 @@ checkVariables
 checkSSH
 
 printf "Please select Linode operation:\n"
-_OPTIONS=("Create Instance" "Delete Instance" "List Instances" "View Instance" "Connect to Instance" "Terminate All Instances")
+_OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Stop Instance(s)" "Terminate All Instances")
 select _OPT in "${_OPTIONS[@]}"
 do
         case ${_OPT} in
             "Create Instance")
 				createInstance
                 ;;
-            "Delete Instance")
-				deleteInstance
+            "Terminate Instance(s)")
+				terminateInstance
                 ;;
             "List Instances")
 				listInstances
@@ -243,6 +274,12 @@ do
                 ;;
 			"Connect to Instance")
 				connectInstanceManual
+                ;;
+			"Start Instance(s)")
+				startInstance
+                ;;
+			"Stop Instance(s)")
+				stopInstance
                 ;;
 			"Terminate All Instances")
 				terminateAllInstances
