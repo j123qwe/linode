@@ -29,10 +29,10 @@ fi
 }
 
 checkSSH(){
-if [ -e ${_SCRIPTDIR}/keys/${_KEYNAME} ]; then
-        chmod 600 ${_SCRIPTDIR}/keys/${_KEYNAME} &> /dev/null
+if [ -e ${_KEYNAME} ]; then
+        chmod 600 ${_KEYNAME} &> /dev/null
 else
-        echo "SSH file is missing (${_SCRIPTDIR}/keys/${_KEYNAME}). Exiting..."
+        echo "SSH file is missing (${_KEYNAME}). Exiting..."
         exit
 fi
 }
@@ -189,9 +189,9 @@ createInstance(){
 }
 
 connectInstance(){
-printf "\nConnecting to instance using the following command:\n\tssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i ${_SCRIPTDIR}/keys/${_KEYNAME} root@${_IP}\n"
+printf "\nConnecting to instance using the following command:\n\tssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i ${_KEYNAME} root@${_IP}\n"
 printf "Note: This could take 60 seconds or more.\n"
-until ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=2 -i ${_SCRIPTDIR}/keys/${_KEYNAME} root@${_IP}; do
+until ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=2 -i ${_KEYNAME} root@${_IP}; do
         echo "Please wait..."
         sleep 1
 done
