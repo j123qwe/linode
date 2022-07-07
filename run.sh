@@ -67,7 +67,7 @@ terminateInstance(){
         _INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
         _LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
         _IP=$(echo ${_INSTANCE} | cut -d, -f2)
-        deleteRoute53
+        deleteDNS
         curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
         printf "Instance ${_ID} deleted.\n"
 	else
@@ -77,7 +77,7 @@ terminateInstance(){
             _ID=$(echo ${_INSTANCE} | cut -d, -f1)
             _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
             _IP=$(echo ${_INSTANCE} | cut -d, -f3)
-            deleteRoute53
+			deleteDNS
             curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
             printf "Instance ${_LABELX} deleted.\n"
         done
@@ -85,32 +85,28 @@ terminateInstance(){
 }
 
 checkDNS(){
-	which aws &> /dev/null
-	if [ $? -ne 0 ]; then
-  		echo "Package awscli is not installed. DNS records will not be updated."
+	if [ -z ${_DOMAIN} ]; then
+		echo "Domain is missing in .variables file. DNS records will not be updates."
 		_UPDATE_DNS=0
-	elif [ ! -e ~/.aws/config ]; then
-		echo "AWS config file is missing. DNS records will not be updated."
-		_UPDATE_DNS=0
-	elif [ -z ${_ZONEID} ]; then
-		echo "Zone ID is missing in .variables file. DNS records will not be updates."
-		_UPDATE_DNS=0
-    elif [ -z ${_ZONE} ]; then
-        echo "Zone is missing in .variables file. DNS records will not be updates."
+    elif [ -z ${_DOMAINID} ]; then
+        echo "Domain ID is missing in .variables file. DNS records will not be updates."
         _UPDATE_DNS=0
 	else
 		_UPDATE_DNS=1
 fi
 }
 
-createRoute53(){
-	printf '{"Comment":"Create Linode DNS record","Changes":[{"Action":"UPSERT","ResourceRecordSet":{"ResourceRecords":[{"Value":"'${_IP}'"}],"Name":"'${_LABELX}.${_ZONE}'","Type":"A","TTL":30}}]}' > ${_SCRIPTDIR}/tmp/route_53.json
-	aws route53 change-resource-record-sets --hosted-zone-id ${_ZONEID} --change-batch file://${_SCRIPTDIR}/tmp/route_53.json > /dev/null
-	if [ $? -eq 0 ]; then
-		printf "Route53 record ${_LABELX}.${_ZONE} created.\n"
-	else
-		printf "Error creating Route53 record ${_LABELX}.${_ZONE}.\n"
-	fi
+createDNS(){
+	curl --silent -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${_TOKEN}" \
+    -X POST -d '{
+      "type": "A",
+      "name": "'${_LABELX}'",
+      "target": "'${_IP}'",
+      "ttl_sec": 300
+    }' \
+    https://api.linode.com/v4/domains/${_DOMAINID}/records > /dev/null
+	printf "DNS record ${_LABELX}.${_DOMAIN} created\n"
 }
 
 createInstance(){
@@ -128,7 +124,7 @@ createInstance(){
 	read -r -p "How many instances? " _REPLICAS
 	if [ ! -z ${_ZONE} ] && [ ! -z ${_ZONEID} ]; then
 		while true; do
-			read -p "Do you wish to create Route 53 DNS records? " yn
+			read -p "Do you wish to create DNS records? " yn
 			case $yn in
 				[Yy]* ) checkDNS; break;;
 				[Nn]* ) _UPDATE_DNS=0; break;;
@@ -166,7 +162,7 @@ createInstance(){
 
 			# DNS Records
 			if [ ${_UPDATE_DNS} -eq 1 ]; then
-				createRoute53
+				createDNS
 			fi
 
 			# Connect to Instance
@@ -204,16 +200,12 @@ connectInstanceManual(){
 	connectInstance 2> /dev/null
 }
 
-deleteRoute53(){
-	dig ${_LABELX}.${_ZONE} | grep "ANSWER: 1"> /dev/null
+deleteDNS(){
+	dig ${_LABELX}.${_DOMAIN} | grep "ANSWER: 1"> /dev/null
 	if [ $? -eq 0 ]; then
-		printf '{"Comment":"Delete Linode DNS record","Changes":[{"Action":"DELETE","ResourceRecordSet":{"ResourceRecords":[{"Value":"'${_IP}'"}],"Name":"'${_LABELX}.${_ZONE}'","Type":"A","TTL":30}}]}' > ${_SCRIPTDIR}/tmp/route_53.json
-		aws route53 change-resource-record-sets --hosted-zone-id ${_ZONEID} --change-batch file://${_SCRIPTDIR}/tmp/route_53.json > /dev/null
-		if [ $? -eq 0 ]; then
-			printf "Route53 record ${_LABELX}.${_ZONE} deleted.\n"
-		else
-			printf "Error deleting Route53 record ${_LABELX}.${_ZONE}.\n"
-		fi
+		_DNSID=$(curl --silent -H "Authorization: Bearer ${_TOKEN}"  https://api.linode.com/v4/domains/${_DOMAINID}/records | jq ' .data[] | select(.name == "'${_LABELX}'") | .id')
+		curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/domains/${_DOMAINID}/records/${_DNSID} > /dev/null
+		printf "DNS record ${_LABELX}.${_DOMAIN} deleted.\n"
 	fi
 }
 
