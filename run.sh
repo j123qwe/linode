@@ -88,12 +88,12 @@ checkDNS(){
 	if [ -z ${_DOMAIN} ]; then
 		echo "Domain is missing in .variables file. DNS records will not be updates."
 		_UPDATE_DNS=0
-    elif [ -z ${_DOMAINID} ]; then
-        echo "Domain ID is missing in .variables file. DNS records will not be updates."
-        _UPDATE_DNS=0
+	elif [ -z ${_DOMAINID} ]; then
+        	echo "Domain ID is missing in .variables file. DNS records will not be updates."
+        	_UPDATE_DNS=0
 	else
 		_UPDATE_DNS=1
-fi
+	fi
 }
 
 createDNS(){
@@ -122,7 +122,7 @@ createInstance(){
 	read -r -p "Which image? " _IMAGE
 	read -r -p "Instance Name? " _LABEL
 	read -r -p "How many instances? " _REPLICAS
-	if [ ! -z ${_ZONE} ] && [ ! -z ${_ZONEID} ]; then
+	if [ ! -z ${_DOMAIN} ] && [ ! -z ${_DOMAINID} ]; then
 		while true; do
 			read -p "Do you wish to create DNS records? " yn
 			case $yn in
