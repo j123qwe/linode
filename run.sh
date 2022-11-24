@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#Last Update: 2022-11-24
+
 ##Variables
 _SCRIPTDIR=$(pwd)
 _PID=$$
@@ -242,10 +244,11 @@ startInstance(){
 
 
 ##Execute
-
 checkApps
 checkVariables
 checkSSH
+
+stty erase '^H' #Set backspace/erase charater
 
 printf "Please select Linode operation:\n"
 _OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Stop Instance(s)" "Terminate All Instances")
