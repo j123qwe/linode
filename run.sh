@@ -186,6 +186,48 @@ createInstance(){
 	fi
 }
 
+createInstanceBulk(){
+        _PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
+        _REGION=$1
+        _TYPE=$2
+        _IMAGE=$3
+        _LABEL=$4
+        _REPLICAS=$5
+        _UPDATE_DNS=0
+        _REPLICA=0
+        printf "\nThe root password is: ${_PASSWORD}\n"
+        until [ ${_REPLICA} -eq ${_REPLICAS} ]; do
+                _REPLICA=$(expr ${_REPLICA} + 1)
+                _LABELX=$(echo "${_LABEL}-${_REPLICA}")
+                curl --silent -H "Content-Type: application/json" \
+                        -H "Authorization: Bearer ${_TOKEN}" \
+                        -X POST -d '{
+                        "image": "'${_IMAGE}'",
+                        "root_pass": "'${_PASSWORD}'",
+                        "authorized_users": [
+                                "'${_USERNAME}'"
+                                ],
+                        "booted": true,
+                        "label": "'${_LABELX}'",
+                        "type": "'${_TYPE}'",
+                        "region": "'${_REGION}'",
+                        "stackscript_id": '${_STACKSCRIPTID}',
+                        "stackscript_data": {
+                        "hostname": "'${_LABELX}'"
+                        }
+                        }' \
+                        https://api.linode.com/v4/linode/instances | jq > ${_SCRIPTDIR}/tmp/instance.json
+                        _IP=$(cat ${_SCRIPTDIR}/tmp/instance.json | jq -r '.ipv4[0]')
+                        printf "Linode ${_LABELX} created\n"
+                        createDNS
+        done
+        if [ ${_REPLICAS} -gt 1 ]; then
+                sleep 1
+                printf "\n"
+                listInstances
+        fi
+}
+
 connectInstance(){
 printf "\nConnecting to instance using the following command:\n\tssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i ${_KEYNAME} root@${_IP}\n"
 printf "Note: This could take 60 seconds or more.\n"
@@ -247,6 +289,16 @@ startInstance(){
 checkApps
 checkVariables
 checkSSH
+
+if [ ! -z $1 ]; then
+	if [[ $1 == "help" ]]; then
+		echo "Usage:   ./run.sh REGION TYPE IMAGE LABEL REPLICAS"
+		echo "Example: ./run.sh us-ord g6-standard-1 linode/ubuntu22.04 lab 10 "
+		exit
+	fi
+	createInstanceBulk $1 $2 $3 $4 $5
+	exit
+fi
 
 stty erase '^H' #Set backspace/erase charater
 
