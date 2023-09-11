@@ -19,6 +19,7 @@ The .variables file must be created in root of the script directory in the follo
     _STACKSCRIPTID=<Linode StackScript ID>
     _DOMAIN=<Linode Domain>
     _DOMAINID=<Linode Domain ID>
+    _TTL=<DNS Record TTL>
 
 ## StackScript
 

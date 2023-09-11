@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#Last Update: 2022-11-24
+#Last Update: 2023-09-10
 
 ##Variables
 _SCRIPTDIR=$(pwd)
@@ -105,7 +105,7 @@ createDNS(){
       "type": "A",
       "name": "'${_LABELX}'",
       "target": "'${_IP}'",
-      "ttl_sec": 300
+      "ttl_sec": "'${_TTL}'"
     }' \
     https://api.linode.com/v4/domains/${_DOMAINID}/records > /dev/null
 	printf "DNS record ${_LABELX}.${_DOMAIN} created\n"
