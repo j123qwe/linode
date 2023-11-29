@@ -13,13 +13,10 @@
 
 The .variables file must be created in root of the script directory in the following format:
 
-    _USERNAME=<Linode Username>
-    _KEYNAME=<SSH private key file>
-    _TOKEN=<Linode Personal Access Token>
-    _STACKSCRIPTID=<Linode StackScript ID>
-    _DOMAIN=<Linode Domain>
-    _DOMAINID=<Linode Domain ID>
-    _TTL=<DNS Record TTL>
+    Environment1,Username1,Key1,Token1,StackScriptID1,Domain1,DomainID1,TTL1
+    Environment2,Username2,Key2,Token2,StackScriptID2,Domain2,DomainID2,TTL2
+
+Multiple environments can be specified as demonstrated above.
 
 ## StackScript
 

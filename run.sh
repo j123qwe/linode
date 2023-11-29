@@ -21,12 +21,31 @@ for _PKG in ${_PACKAGES}; do
 done
 }
 
+selectEnvironment(){
+	if [ -z ${_ENVIRONMENT} ]; then
+		printf "Environments: \n"
+		grep -v "#" ${_SCRIPTDIR}/.variables | cut -d, -f1
+		printf "\n"
+		read -p "Which environment? " _ENVIRONMENT
+	fi
+    _USERNAME=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f2)
+    _KEYNAME=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f3)
+    _TOKEN=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f4)
+    _STACKSCRIPTID=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f5)
+    _DOMAIN=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f6)
+    _DOMAINID=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f7)
+    _TTL=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f8)
+	_DEFAULT_REGION=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f9)
+	_DEFAULT_TYPE=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f10)
+	_DEFAULT_IMAGE=$(grep ^${_ENVIRONMENT} ${_SCRIPTDIR}/.variables | cut -d, -f11)
+}
+
 checkVariables(){
 if [ ! -e ${_SCRIPTDIR}/.variables ]; then
         echo "Variables file is missing. Please add create .variables file. Exiting..."
         exit
 else
-	source ${_SCRIPTDIR}/.variables
+	selectEnvironment
 fi
 }
 
@@ -105,7 +124,7 @@ createDNS(){
       "type": "A",
       "name": "'${_LABELX}'",
       "target": "'${_IP}'",
-      "ttl_sec": "'${_TTL}'"
+      "ttl_sec": '${_TTL}'
     }' \
     https://api.linode.com/v4/domains/${_DOMAINID}/records > /dev/null
 	printf "DNS record ${_LABELX}.${_DOMAIN} created\n"
@@ -115,13 +134,16 @@ createInstance(){
 	_PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
 	printf "Regions: \n"
 	getRegions
-	read -r -p "Which region? " _REGION
+	read -r -p "Which region? [${_DEFAULT_REGION}] " _REGION
+	_REGION=${_REGION:-${_DEFAULT_REGION}}
 	printf "\nTypes: \n"
 	getTypes
-	read -r -p "Which type? " _TYPE
+	read -r -p "Which type? [${_DEFAULT_TYPE}] " _TYPE
+	_TYPE=${_TYPE:-${_DEFAULT_TYPE}}
 	printf "\nImages: \n"
 	getImages
-	read -r -p "Which image? " _IMAGE
+	read -r -p "Which image? [${_DEFAULT_IMAGE}] " _IMAGE
+	_IMAGE=${_IMAGE:-${_DEFAULT_IMAGE}}
 	read -r -p "Instance Name? " _LABEL
 	read -r -p "How many instances? " _REPLICAS
 	if [ ! -z ${_DOMAIN} ] && [ ! -z ${_DOMAINID} ]; then
@@ -187,15 +209,21 @@ createInstance(){
 }
 
 createInstanceBulk(){
-        _PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
-        _REGION=$1
-        _TYPE=$2
-        _IMAGE=$3
-        _LABEL=$4
-        _REPLICAS=$5
+		_ENVIRONMENT=$1
+        _REGION=$2
+        _TYPE=$3
+        _IMAGE=$4
+        _LABEL=$5
+        _REPLICAS=$6
+	if [ -z $7 ]; then
+		_PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
+	else
+		_PASSWORD=$7
+	fi
         _UPDATE_DNS=0
         _REPLICA=0
         printf "\nThe root password is: ${_PASSWORD}\n"
+		checkVariables
         until [ ${_REPLICA} -eq ${_REPLICAS} ]; do
                 _REPLICA=$(expr ${_REPLICA} + 1)
                 _LABELX=$(echo "${_LABEL}-${_REPLICA}")
@@ -286,21 +314,22 @@ startInstance(){
 
 
 ##Execute
-checkApps
-checkVariables
-checkSSH
+
+stty erase '^H' #Set backspace/erase charater
 
 if [ ! -z $1 ]; then
 	if [[ $1 == "help" ]]; then
-		echo "Usage:   ./run.sh REGION TYPE IMAGE LABEL REPLICAS"
-		echo "Example: ./run.sh us-ord g6-standard-1 linode/ubuntu22.04 lab 10 "
+		echo "Usage:   ./run.sh ENVIRONMENT REGION TYPE IMAGE LABEL REPLICAS PASSWORD"
+		echo "Example: ./run.sh personal us-ord g6-standard-1 linode/ubuntu22.04 lab 10 PaSs312!"
 		exit
 	fi
-	createInstanceBulk $1 $2 $3 $4 $5
+	createInstanceBulk $1 $2 $3 $4 $5 $6 $7
 	exit
 fi
 
-stty erase '^H' #Set backspace/erase charater
+checkApps
+checkVariables
+checkSSH
 
 printf "Please select Linode operation:\n"
 _OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Stop Instance(s)" "Terminate All Instances")
