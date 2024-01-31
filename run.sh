@@ -290,28 +290,64 @@ terminateAllInstances(){
 	done
 }
 
-stopInstance(){
-	listInstances
-	read -r -p "Which image label? " _LABEL
-	for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+stopAllInstances(){
+	for _INSTANCE in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0]'); do
 		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
 		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
-		curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/shutdown > /dev/null
-		printf "Instance ${_LABELX} shut down.\n"
+		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
+		stopInstance ${_ID}
+	done
+}
+
+stopInstance(){
+	if [ ! -z ${1} ]; then
+		_ID=${1}
+        _INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
+        _LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
+        _IP=$(echo ${_INSTANCE} | cut -d, -f2)
+        curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/shutdown > /dev/null
+        printf "Instance ${_LABELX} shut down.\n"
+	else
+		listInstances
+		read -r -p "Which image label? " _LABEL
+        for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+            _ID=$(echo ${_INSTANCE} | cut -d, -f1)
+            _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+            _IP=$(echo ${_INSTANCE} | cut -d, -f3)
+            curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/shutdown > /dev/null
+            printf "Instance ${_LABELX} shut down.\n"
+        done
+	fi
+}
+
+startAllInstances(){
+	for _INSTANCE in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0]'); do
+		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
+		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
+		startInstance ${_ID}
 	done
 }
 
 startInstance(){
-	listInstances
-	read -r -p "Which image label? " _LABEL
-	for _INSTANCE in $(listInstances | grep ${_LABEL}); do
-		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
-		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
-		curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/boot > /dev/null
-		printf "Instance ${_LABELX} booted.\n"
-	done
+	if [ ! -z ${1} ]; then
+		_ID=${1}
+        _INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
+        _LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
+        curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/boot > /dev/null
+        printf "Instance ${_LABELX} started.\n"
+	else
+		listInstances
+		read -r -p "Which image label? " _LABEL
+        for _INSTANCE in $(listInstances | grep ${_LABEL}); do
+            _ID=$(echo ${_INSTANCE} | cut -d, -f1)
+            _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+            _IP=$(echo ${_INSTANCE} | cut -d, -f3)
+            curl --silent -H "Authorization: Bearer ${_TOKEN}" -X POST https://api.linode.com/v4/linode/instances/${_ID}/boot > /dev/null
+            printf "Instance ${_LABELX} started.\n"
+        done
+	fi
 }
-
 
 ##Execute
 
@@ -332,7 +368,7 @@ checkVariables
 checkSSH
 
 printf "Please select Linode operation:\n"
-_OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Stop Instance(s)" "Terminate All Instances")
+_OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Start All Instances" "Stop Instance(s)" "Stop All Instances" "Terminate All Instances")
 select _OPT in "${_OPTIONS[@]}"
 do
         case ${_OPT} in
@@ -354,8 +390,14 @@ do
 			"Start Instance(s)")
 				startInstance
                 ;;
+			"Start All Instances")
+				startAllInstances
+                ;;
 			"Stop Instance(s)")
 				stopInstance
+                ;;
+			"Stop All Instances")
+				stopAllInstances
                 ;;
 			"Terminate All Instances")
 				terminateAllInstances
