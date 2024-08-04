@@ -58,17 +58,29 @@ else
 fi
 }
 
-getImages(){
-	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/images | jq -r '.data[].id' | sort
+selectImage(){
+	printf "Image\n"
+	_IMAGES=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/images | jq -r '.data[].id' | sort)
+	echo "${_IMAGES}" | awk -F',' '{print NR ". " $1}'
+	read -p "Select an image: " _IMAGE_INDEX
+	_IMAGE=$(echo "${_IMAGES}" | awk -v idx=${_IMAGE_INDEX} 'NR==idx {print $1}')
 }
 
-getRegions(){
-	curl --silent https://api.linode.com/v4/regions | jq -r '.data[] | .id + "," + .country' | sort
+
+selectRegion(){
+	printf "Region\n"
+	_REGIONS=$(curl --silent https://api.linode.com/v4/regions | jq -r '.data[] | .id + "," + .country' | sort)
+	echo "${_REGIONS}" | awk -F',' '{print NR ". " $1}'
+	read -p "Select a region: " _REGION_INDEX
+	_REGION=$(echo "${_REGIONS}" | awk -F',' -v idx=${_REGION_INDEX} 'NR==idx {print $1}')
 }
 
-getTypes(){
+selectType(){
 	printf "ID,Label,vCPUs,Memory,Disk,Price\n"
-	curl --silent https://api.linode.com/v4/linode/types | jq -r '.data[] | .id + "," + .label + "," + (.vcpus|tostring) + "," + (.memory|tostring) + "MB," + (.disk|tostring) + "MB,$" + (.price.hourly|tostring)'
+	_TYPES=$(curl --silent https://api.linode.com/v4/linode/types | jq -r '.data[] | .id + "," + .label + "," + (.vcpus|tostring) + "," + (.memory|tostring) + "MB," + (.disk|tostring) + "MB,$" + (.price.hourly|tostring)')
+	echo "${_TYPES}" | awk -F',' '{print NR ". " $0}'
+	read -p "Select a type: " _TYPE_INDEX
+	_TYPE=$(echo "${_TYPES}" | awk -F',' -v idx=${_TYPE_INDEX} 'NR==idx {print $1}')
 }
 
 listInstances(){
@@ -80,6 +92,14 @@ viewInstance(){
 	listInstances
 	read -r -p "Instance ID: " _ID
 	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq 
+}
+
+selectFirewall(){
+	printf "ID,Label\n"
+	_FIREWALLS=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/networking/firewalls | jq -r '.data[] | (.id|tostring) + "," + .label')
+	echo "${_FIREWALLS}" | awk -F',' '{print NR ". " $2}'
+	read -p "Select a firewall: " _FIREWALL_INDEX
+	_FIREWALL=$(echo "${_FIREWALLS}" | awk -F',' -v idx=${_FIREWALL_INDEX} 'NR==idx {print $1}')
 }
 
 terminateInstance(){
@@ -130,20 +150,19 @@ createDNS(){
 	printf "DNS record ${_LABELX}.${_DOMAIN} created\n"
 }
 
+createInventory(){
+	read -r -p "Enter inventory file name: " _INVENTORY_NAME
+	printf "[all:vars]\nansible_ssh_common_args=-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null\nansible_user=root\nansible_ssh_private_key_file=${_KEYNAME}\n\n[nodes]\n" > ${_SCRIPTDIR}/tmp/${_INVENTORY_NAME}
+	curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | .label + "\tansible_host=" + .ipv4[0]' >> ${_SCRIPTDIR}/tmp/${_INVENTORY_NAME}
+	printf "\nInventory file created: ${_SCRIPTDIR}/tmp/${_INVENTORY_NAME}\n"
+}
+
 createInstance(){
 	_PASSWORD=$(date +%s | sha256sum | base64 | head -c 32 ; echo) #Generate random password
-	printf "Regions: \n"
-	getRegions
-	read -r -p "Which region? [${_DEFAULT_REGION}] " _REGION
-	_REGION=${_REGION:-${_DEFAULT_REGION}}
-	printf "\nTypes: \n"
-	getTypes
-	read -r -p "Which type? [${_DEFAULT_TYPE}] " _TYPE
-	_TYPE=${_TYPE:-${_DEFAULT_TYPE}}
-	printf "\nImages: \n"
-	getImages
-	read -r -p "Which image? [${_DEFAULT_IMAGE}] " _IMAGE
-	_IMAGE=${_IMAGE:-${_DEFAULT_IMAGE}}
+	selectRegion
+	selectType
+	selectImage
+	selectFirewall
 	read -r -p "Instance Name? " _LABEL
 	read -r -p "How many instances? " _REPLICAS
 	if [ ! -z ${_DOMAIN} ] && [ ! -z ${_DOMAINID} ]; then
@@ -175,6 +194,7 @@ createInstance(){
 			"label": "'${_LABELX}'",
 			"type": "'${_TYPE}'",
 			"region": "'${_REGION}'",
+			"firewall_id": '${_FIREWALL}',
 			"stackscript_id": '${_STACKSCRIPTID}',
 			"stackscript_data": {
 		        "hostname": "'${_LABELX}'"
@@ -368,7 +388,7 @@ checkVariables
 checkSSH
 
 printf "Please select Linode operation:\n"
-_OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Start All Instances" "Stop Instance(s)" "Stop All Instances" "Terminate All Instances")
+_OPTIONS=("Create Instance" "Terminate Instance(s)" "List Instances" "View Instance" "Connect to Instance" "Start Instance(s)" "Start All Instances" "Stop Instance(s)" "Stop All Instances" "Terminate All Instances" "Create Ansible Inventory")
 select _OPT in "${_OPTIONS[@]}"
 do
         case ${_OPT} in
@@ -401,6 +421,9 @@ do
                 ;;
 			"Terminate All Instances")
 				terminateAllInstances
+                ;;
+			"Create Ansible Inventory")
+				createInventory
                 ;;
             *) echo invalid option;;
         esac

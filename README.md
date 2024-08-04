@@ -4,6 +4,7 @@
 
  - A [Linode](https://www.linode.com/) account
  - A [Linode Personal Access Token](https://www.linode.com/docs/guides/getting-started-with-the-linode-api/)
+ - One or more Linode firewalls defined
  - An SSH key
 	 - Public key loaded into Linode
 	 - Private key stored in **keys** directory
