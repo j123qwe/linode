@@ -1,11 +1,12 @@
 #!/bin/bash
 
-#Last Update: 2023-09-10
+#Last Update: 2025-03-05
 
 ##Variables
 _SCRIPTDIR=$(pwd)
 _PID=$$
 _PACKAGES="jq"
+_PROTECTED_FILE="${_SCRIPTDIR}/.protected"
 
 ##Startup
 mkdir -p ${_SCRIPTDIR}/tmp
@@ -58,6 +59,15 @@ else
 fi
 }
 
+# New function to read the .protected file
+readProtectedFile(){
+    if [ -e ${_PROTECTED_FILE} ]; then
+        _PROTECTED_IDS=$(cat ${_PROTECTED_FILE})
+    else
+        _PROTECTED_IDS=""
+    fi
+}
+
 selectImage(){
 	printf "Image\n"
 	_IMAGES=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/images | jq -r '.data[].id' | sort)
@@ -102,27 +112,37 @@ selectFirewall(){
 	_FIREWALL=$(echo "${_FIREWALLS}" | awk -F',' -v idx=${_FIREWALL_INDEX} 'NR==idx {print $1}')
 }
 
+# Modified terminateInstance function
 terminateInstance(){
-	if [ ! -z ${1} ]; then
-		_ID=${1}
+    readProtectedFile
+    if [ ! -z ${1} ]; then
+        _ID=${1}
+        if echo "${_PROTECTED_IDS}" | grep -q "${_ID}"; then
+            echo "Instance ${_ID} is protected and will not be deleted."
+            return
+        fi
         _INSTANCE=$(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances/${_ID} | jq -r '.label + "," + .ipv4[0]')
         _LABELX=$(echo ${_INSTANCE} | cut -d, -f1)
         _IP=$(echo ${_INSTANCE} | cut -d, -f2)
         deleteDNS
         curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
         printf "Instance ${_ID} deleted.\n"
-	else
-		listInstances
-		read -r -p "Which image label? " _LABEL
+    else
+        listInstances
+        read -r -p "Which image label? " _LABEL
         for _INSTANCE in $(listInstances | grep ${_LABEL}); do
             _ID=$(echo ${_INSTANCE} | cut -d, -f1)
+            if echo "${_PROTECTED_IDS}" | grep -q "${_ID}"; then
+                echo "Instance ${_ID} is protected and will not be deleted."
+                continue
+            fi
             _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
             _IP=$(echo ${_INSTANCE} | cut -d, -f3)
-			deleteDNS
+            deleteDNS
             curl --silent -H "Authorization: Bearer ${_TOKEN}" -X DELETE https://api.linode.com/v4/linode/instances/${_ID} > /dev/null
             printf "Instance ${_LABELX} deleted.\n"
         done
-	fi
+    fi
 }
 
 checkDNS(){
@@ -301,13 +321,19 @@ deleteDNS(){
 	fi
 }
 
+# Modified terminateAllInstances function
 terminateAllInstances(){
-	for _INSTANCE in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0]'); do
-		_ID=$(echo ${_INSTANCE} | cut -d, -f1)
-		_LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
-		_IP=$(echo ${_INSTANCE} | cut -d, -f3)
-		terminateInstance ${_ID}
-	done
+    readProtectedFile
+    for _INSTANCE in $(curl --silent -H "Authorization: Bearer ${_TOKEN}" https://api.linode.com/v4/linode/instances | jq -r '.data[] | (.id|tostring) + "," + .label + "," + .ipv4[0]'); do
+        _ID=$(echo ${_INSTANCE} | cut -d, -f1)
+        if echo "${_PROTECTED_IDS}" | grep -q "${_ID}"; then
+            echo "Instance ${_ID} is protected and will not be deleted."
+            continue
+        fi
+        _LABELX=$(echo ${_INSTANCE} | cut -d, -f2)
+        _IP=$(echo ${_INSTANCE} | cut -d, -f3)
+        terminateInstance ${_ID}
+    done
 }
 
 stopAllInstances(){
@@ -371,7 +397,7 @@ startInstance(){
 
 ##Execute
 
-stty erase '^H' #Set backspace/erase charater
+stty erase '^H' #Set backspace/erase character
 
 if [ ! -z $1 ]; then
 	if [[ $1 == "help" ]]; then
